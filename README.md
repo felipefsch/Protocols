@@ -18,3 +18,12 @@ Important links:
 -openflow and pox: http://archive.openflow.org/wk/index.php/OpenFlow_Tutorial#Controller_Choice:_POX_.28Python.29
 -pox: https://openflow.stanford.edu/display/ONL/POX+Wiki#POXWiki-OpenFlowinPOX
 -pox learning switches: https://github.com/mininet/openflow-tutorial/wiki/Create-a-Learning-Switch
+
+-https://github.com/CPqD/RouteFlow/blob/master/pox/pox/forwarding/l3_learning.py
+
+-http://openvswitch.org/pipermail/discuss/2013-January/008784.html
+
+Cannot convert argument to integer:
+-http://t2650.network-pox-development.networktalks.us/adding-a-new-action-to-a-message-t2650.html
+
+-https://openflow.stanford.edu/display/ONL/POX+Wiki
