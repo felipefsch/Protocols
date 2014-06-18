@@ -8,8 +8,8 @@ from random import randint
 
 log = core.getLogger()
 
-IDLE_TIMEOUT = 10
-HARD_TIMEOUT = 30
+IDLE_TIMEOUT = 1
+HARD_TIMEOUT = 2
 
 IP_TYPE = 0x800
 ARP_TYPE = 0x806
@@ -92,6 +92,8 @@ class RandomPaths (object):
     
     for dstip in ips:
       msg = of.ofp_flow_mod()
+      msg.idle_timeout = of.OFP_FLOW_PERMANENT
+      msg.hard_timeout = of.OFP_FLOW_PERMANENT
       msg.match.dl_type = IP_TYPE
       msg.match.nw_dst = IPAddr(dstip)
       msg.actions.append(of.ofp_action_output(port = self.ip_to_switch_port[dstip][1]))
@@ -115,9 +117,9 @@ class RandomPaths (object):
       dst_ip = str(packet.payload.protodst)
       log.debug("New ARP packet %s -> %s", src_ip, dst_ip)
     elif packet.type == packet.IP_TYPE:
-      log.debug("New IP packet %s -> %s", src_ip, dst_ip)
       src_ip = str(packet.next.srcip)
       dst_ip = str(packet.next.dstip)
+      log.debug("New IP packet %s -> %s", src_ip, dst_ip)
     else:
       log.debug("Ignoring packet type %s", packet.type)
       return      
@@ -131,18 +133,21 @@ class RandomPaths (object):
     paths = list(self.dfs_paths(aux_switches, src_switch, dst_switch))
     rand = randint(0, len(paths) - 1)
     path = paths[rand]
-    log.debug("Choosen path: %s", path)
+    log.debug("Choosen path: %s", path)    
 
-    # As we already cover the trivial case, here the path length is always >= 2
+    # Path length always >= 2
     prev = src_switch # First hop 
     for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
       msg = of.ofp_flow_mod()
+      msg.idle_timeout = IDLE_TIMEOUT
+      msg.hard_timeout = HARD_TIMEOUT
       msg.match.dl_type = IP_TYPE
       msg.match.nw_src = IPAddr(src_ip)
       msg.match.nw_dst = IPAddr(dst_ip)
       msg.actions.append(of.ofp_action_output(port = self.switches_ports[prev][switch]))
       core.openflow.getConnection(prev).send(msg)
       msg.match.dl_type = ARP_TYPE
+      msg.data = event.ofp
       core.openflow.getConnection(prev).send(msg)
       log.debug("At switch %s rule for %s -> %s installed", prev, src_ip, dst_ip)
       log.debug("At %s output port %s to %s", prev, self.switches_ports[prev][switch], switch)
