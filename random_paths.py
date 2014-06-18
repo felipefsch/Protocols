@@ -133,7 +133,7 @@ class RandomPaths (object):
     path = paths[rand]
     log.debug("Choosen path: %s", path)
 
-    # Path length always >= 2
+    # As we already cover the trivial case, here the path length is always >= 2
     prev = src_switch # First hop 
     for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
       msg = of.ofp_flow_mod()
