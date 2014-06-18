@@ -4,6 +4,7 @@ import pox.lib.packet as pkt
 from pox.lib.packet.arp import arp
 from pox.lib.util import dpidToStr
 from pox.lib.addresses import IPAddr, EthAddr
+from random import randint
 
 log = core.getLogger()
 
@@ -13,6 +14,14 @@ HARD_TIMEOUT = 30
 IP_TYPE = 0x800
 ARP_TYPE = 0x806
 
+"""
+Main idea of algorithm:
+1) When a switch come up, we know previously which hosts are in which port and we install
+rules for 'in-switch' traffic.
+2) For connections of hosts in different switches, transform into switch connections
+3) Find path between switches
+4) Install rules in the switches so that the hosts can communicate
+"""
 class RandomPaths (object):
 
   def __init__ (self, connection):
@@ -23,11 +32,27 @@ class RandomPaths (object):
     # This binds our PacketIn event listener
     connection.addListeners(self)
 
-    self.ip_to_port = dict({'10.0.0.1': 1,
-                            '10.0.0.2': 2,
-                            '10.0.0.3': 3,
-                            '10.0.0.4': 2,
-                            '10.0.0.5': 3})
+    # Matrix representing the connection between switches where the first
+    # row/line is the switch number
+    #
+    # Line X, Col Y = switch X connected Y using port (X,Y)
+    self.switches_matrix = [[0, 6, 7],
+                            [6, 0, 4],
+                            [7, 1, 0]]
+
+    # Adjacency list of switches
+    self.switches = {6: set([7]),
+                     7: set([6])}
+
+    # List of ports connecting other switches for each switch
+    self.switches_ports = {6: {7: 4},
+                           7: {6: 1}}
+
+    self.ip_to_switch_port = dict({'10.0.0.1': [6,1],
+                            '10.0.0.2': [6,2],
+                            '10.0.0.3': [6,3],
+                            '10.0.0.4': [7,2],
+                            '10.0.0.5': [7,3]})
 
     # Switch DPID [ip1..ipn]
     self.switch_ips = dict({6:['10.0.0.1','10.0.0.2', '10.0.0.3'],
@@ -49,17 +74,27 @@ class RandomPaths (object):
     # Send message to switch
     self.connection.send(msg)
 
-  # Install first rules when start the controller
+  # Use: list(dfs_paths(graph, 'A', 'F'))
+  def dfs_paths(self, graph, start, goal):
+    stack = [(start, [start])]
+    while stack:
+      (vertex, path) = stack.pop()
+      for next in graph[vertex] - set(path):
+        if next == goal:
+          yield path + [next]
+        else:
+          stack.append((next, path + [next]))
+
+  # Install basic rules when switches come up
   def _handle_ConnectionUp (self, event):
     dpid = self.connection.dpid
     ips = self.switch_ips[self.connection.dpid]    
-    #log.debug("IPS %s at %s", ips, dpid)
     
     for dstip in ips:
       msg = of.ofp_flow_mod()
       msg.match.dl_type = IP_TYPE
       msg.match.nw_dst = IPAddr(dstip)
-      msg.actions.append(of.ofp_action_output(port = self.ip_to_port[dstip]))
+      msg.actions.append(of.ofp_action_output(port = self.ip_to_switch_port[dstip][1]))
       self.connection.send(msg)
       msg.match.dl_type = ARP_TYPE
       self.connection.send(msg)
@@ -71,11 +106,50 @@ class RandomPaths (object):
     """
     packet = event.parsed # This is the parsed packet data.
 
-    log.debug("Packet IN")
-    
     if not packet.parsed:
       log.warning("Ignoring incomplete packet")
-      return    
+      return
+
+    if packet.type == packet.ARP_TYPE:
+      src_ip = str(packet.payload.protosrc)
+      dst_ip = str(packet.payload.protodst)
+      log.debug("New ARP packet %s -> %s", src_ip, dst_ip)
+    elif packet.type == packet.IP_TYPE:
+      log.debug("New IP packet %s -> %s", src_ip, dst_ip)
+      src_ip = str(packet.next.srcip)
+      dst_ip = str(packet.next.dstip)
+    else:
+      log.debug("Ignoring packet type %s", packet.type)
+      return      
+
+    src_switch = self.ip_to_switch_port[src_ip][0]
+    dst_switch = self.ip_to_switch_port[dst_ip][0]
+
+    log.debug("Generating paths from switch %s to %s", src_switch, dst_switch)
+
+    aux_switches = self.switches
+    paths = list(self.dfs_paths(aux_switches, src_switch, dst_switch))
+    rand = randint(0, len(paths) - 1)
+    path = paths[rand]
+    log.debug("Choosen path: %s", path)
+
+    # Path length always >= 2
+    prev = src_switch # First hop 
+    for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
+      msg = of.ofp_flow_mod()
+      msg.match.dl_type = IP_TYPE
+      msg.match.nw_src = IPAddr(src_ip)
+      msg.match.nw_dst = IPAddr(dst_ip)
+      msg.actions.append(of.ofp_action_output(port = self.switches_ports[prev][switch]))
+      core.openflow.getConnection(prev).send(msg)
+      msg.match.dl_type = ARP_TYPE
+      core.openflow.getConnection(prev).send(msg)
+      log.debug("At switch %s rule for %s -> %s installed", prev, src_ip, dst_ip)
+      log.debug("At %s output port %s to %s", prev, self.switches_ports[prev][switch], switch)
+      prev = switch
+    
+    #core.openflow.getConnection(6).send(msg)
+    
 
 def launch ():
   """
