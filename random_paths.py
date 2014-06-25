@@ -34,24 +34,34 @@ class RandomPaths (object):
     connection.addListeners(self)
 
     # Adjacency list of switches
-    self.switches = {5: set([6,7]),
-                     6: set([5,7]),
-                     7: set([5,6])}
+    self.switches = {9: set([10,11]),
+                     10: set([9,13]),
+                     11: set([9,12,13]),
+                     12: set([11]),
+                     13: set([10,11])}
 
     # List of ports connecting other switches for each switch
-    self.switches_ports = {5: {6: 3, 7: 4},
-                           6: {5: 2, 7: 3},
-                           7: {5: 2, 6: 3}}
+    self.switches_ports = {9: {10: 4, 11: 5},
+                           10: {9: 2, 13: 3},
+                           11: {9: 2, 12: 3, 13: 4},
+                           12: {11: 2},
+                           13: {10: 3, 11: 4}}
 
-    self.ip_to_switch_port = dict({'10.0.0.1': [5,1],
-                                   '10.0.0.2': [5,2],
-                                   '10.0.0.3': [6,1],
-                                   '10.0.0.4': [7,1]})
+    self.ip_to_switch_port = dict({'10.0.0.1': [9,1],
+                                   '10.0.0.2': [9,2],
+                                   '10.0.0.3': [9,3],
+                                   '10.0.0.4': [10,1],
+                                   '10.0.0.5': [11,1],
+                                   '10.0.0.6': [12,1],
+                                   '10.0.0.7': [13,1],
+                                   '10.0.0.8': [13,2]})
 
     # Switch DPID [ip1..ipn]
-    self.switch_ips = dict({5:['10.0.0.1','10.0.0.2'],
-                            6:['10.0.0.3'],
-                            7:['10.0.0.4']})
+    self.switch_ips = dict({9:['10.0.0.1','10.0.0.2', '10.0.0.3'],
+                            10:['10.0.0.4'],
+                            11:['10.0.0.5'],
+                            12:['10.0.0.6'],
+                            13:['10.0.0.7','10.0.0.8']})
 
   def resend_packet (self, packet_in, out_port):
     """

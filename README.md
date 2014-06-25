@@ -9,9 +9,17 @@ cd <path_to_pox>
 ./pox.py log.level --DEBUG misc.of_tutorial
 sudo mn --topo single,3 --mac --switch ovsk --controller=remote,ip=192.168.0.102
 
+Controller with custom topology:
+sudo mn --custom ./custom_topo.py --topo mytopo --mac --switch ovsk --controller=remote,ip=192.168.56.1
+
 Note: this implementation assumes you are using the flag --mac while starting mininet.
 Also, you must set the remote ip as the IP from br0 interface of the host computer.
 
+Running the controller:
+-In a new terminal, go to <path_to_pox>/pox/ and runs the command:
+"$./pox.py log.level --DEBUG misc.random_paths"
+
+Make sure to copy the file 'random_paths.py' to <path_to_pox>/pox/misc/
 
 Important links:
 -mininet walktrhough: http://mininet.org/walkthrough/
