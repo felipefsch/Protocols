@@ -11,7 +11,7 @@ class MyTopo( Topo ):
     # Adjacency list of switches
     self.switches = {9: set([10,11]),
                      10: set([9,13]),
-                     11: set([9,13]),
+                     11: set([9,12,13]),
                      12: set([11]),
                      13: set([10,11])}
 
@@ -20,7 +20,7 @@ class MyTopo( Topo ):
                            10: {9: 2, 13: 3},
                            11: {9: 2, 12: 3, 13: 4},
                            12: {11: 2},
-                           13: {10: 3, 11: 3}}
+                           13: {10: 3, 11: 4}}
 
     self.ip_to_switch_port = dict({'10.0.0.1': [9,1],
                                    '10.0.0.2': [9,2],

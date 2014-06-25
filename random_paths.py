@@ -8,8 +8,8 @@ from random import randint
 
 log = core.getLogger()
 
-IDLE_TIMEOUT = 1
-HARD_TIMEOUT = 2
+IDLE_TIMEOUT = 100
+HARD_TIMEOUT = 300
 
 IP_TYPE = 0x800
 ARP_TYPE = 0x806
@@ -19,7 +19,8 @@ Main idea of algorithm:
 1) When a switch come up, we know previously which hosts are in which port and we install
 rules for 'in-switch' traffic.
 2) For connections of hosts in different switches, transform into switch connections
-3) Find path between switches
+3) Find all possible paths between the given switches
+3.a) select randomly one of the paths
 4) Install rules in the switches so that the hosts can communicate
 """
 class RandomPaths (object):
@@ -32,31 +33,25 @@ class RandomPaths (object):
     # This binds our PacketIn event listener
     connection.addListeners(self)
 
-    # Matrix representing the connection between switches where the first
-    # row/line is the switch number
-    #
-    # Line X, Col Y = switch X connected Y using port (X,Y)
-    self.switches_matrix = [[0, 6, 7],
-                            [6, 0, 4],
-                            [7, 1, 0]]
-
     # Adjacency list of switches
-    self.switches = {6: set([7]),
-                     7: set([6])}
+    self.switches = {5: set([6,7]),
+                     6: set([5,7]),
+                     7: set([5,6])}
 
     # List of ports connecting other switches for each switch
-    self.switches_ports = {6: {7: 4},
-                           7: {6: 1}}
+    self.switches_ports = {5: {6: 3, 7: 4},
+                           6: {5: 2, 7: 3},
+                           7: {5: 2, 6: 3}}
 
-    self.ip_to_switch_port = dict({'10.0.0.1': [6,1],
-                            '10.0.0.2': [6,2],
-                            '10.0.0.3': [6,3],
-                            '10.0.0.4': [7,2],
-                            '10.0.0.5': [7,3]})
+    self.ip_to_switch_port = dict({'10.0.0.1': [5,1],
+                                   '10.0.0.2': [5,2],
+                                   '10.0.0.3': [6,1],
+                                   '10.0.0.4': [7,1]})
 
     # Switch DPID [ip1..ipn]
-    self.switch_ips = dict({6:['10.0.0.1','10.0.0.2', '10.0.0.3'],
-                            7:['10.0.0.4','10.0.0.5']})
+    self.switch_ips = dict({5:['10.0.0.1','10.0.0.2'],
+                            6:['10.0.0.3'],
+                            7:['10.0.0.4']})
 
   def resend_packet (self, packet_in, out_port):
     """
@@ -85,10 +80,55 @@ class RandomPaths (object):
         else:
           stack.append((next, path + [next]))
 
+  # This installs a path for the flow between two different switches
+  def install_flow_path(self, path, src_ip, dst_ip):
+    # Path length always >= 2
+    prev = path[0] # First hop 
+    for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
+      log.debug("Flow from switch %s to switch %s", prev, switch)
+      msg = of.ofp_flow_mod()
+      msg.idle_timeout = IDLE_TIMEOUT
+      msg.hard_timeout = HARD_TIMEOUT
+      msg.match.dl_type = IP_TYPE
+      msg.match.nw_src = IPAddr(src_ip)
+      msg.match.nw_dst = IPAddr(dst_ip)
+      #msg.data = event.ofp
+      output_port = self.switches_ports[prev][switch]
+      msg.actions.append(of.ofp_action_output(port = output_port))
+      core.openflow.getConnection(prev).send(msg)
+      msg.match.dl_type = ARP_TYPE
+      core.openflow.getConnection(prev).send(msg)
+      log.debug("At switch %s rule for %s -> %s installed", prev, src_ip, dst_ip)
+      log.debug("At switch %s output port %s to switch %s", prev, output_port, switch)
+      prev = switch
+
   # Install basic rules when switches come up
   def _handle_ConnectionUp (self, event):
     dpid = self.connection.dpid
     ips = self.switch_ips[self.connection.dpid]    
+
+    """
+    if dpid == 5:
+      log.debug("dpid = 5")
+      msg = of.ofp_flow_mod()
+      msg.idle_timeout = 10
+      msg.hard_timeout = 10
+      msg.match.nw_src = IPAddr("10.0.0.1")
+      msg.match.nw_dst = IPAddr("10.0.0.3")
+      msg.match.dl_type = IP_TYPE
+      msg.actions.append(of.ofp_action_output(port = 3))
+      core.openflow.getConnection(5).send(msg)
+      msg.match.dl_type = ARP_TYPE
+      core.openflow.getConnection(5).send(msg)
+
+      msg.match.nw_src = IPAddr("10.0.0.3")
+      msg.match.nw_dst = IPAddr("10.0.0.1")
+      msg.match.dl_type = IP_TYPE
+      msg.actions.append(of.ofp_action_output(port = 2))
+      core.openflow.getConnection(6).send(msg)
+      msg.match.dl_type = ARP_TYPE
+      core.openflow.getConnection(6).send(msg)
+    """
     
     for dstip in ips:
       msg = of.ofp_flow_mod()
@@ -97,15 +137,19 @@ class RandomPaths (object):
       msg.match.dl_type = IP_TYPE
       msg.match.nw_dst = IPAddr(dstip)
       msg.actions.append(of.ofp_action_output(port = self.ip_to_switch_port[dstip][1]))
-      self.connection.send(msg)
+      #self.connection.send(msg)
+      core.openflow.getConnection(dpid).send(msg)
       msg.match.dl_type = ARP_TYPE
-      self.connection.send(msg)
+      #self.connection.send(msg)
+      core.openflow.getConnection(dpid).send(msg)
       log.debug("At switch %s rule for dst %s installed", dpid, dstip)
 
   def _handle_PacketIn (self, event):
     """
     Handles packet in messages from the switch.
     """
+
+    log.debug("New packet from switch %s", self.connection.dpid)
     packet = event.parsed # This is the parsed packet data.
 
     if not packet.parsed:
@@ -129,32 +173,59 @@ class RandomPaths (object):
 
     log.debug("Generating paths from switch %s to %s", src_switch, dst_switch)
 
-    aux_switches = self.switches
-    paths = list(self.dfs_paths(aux_switches, src_switch, dst_switch))
-    rand = randint(0, len(paths) - 1)
+    paths = list(self.dfs_paths(self.switches, src_switch, dst_switch))    
+    log.debug("Possible paths: %s", paths)
+    if ((len(paths) - 1) < 0):
+      log.debug("No path between switches %s -> %s found", src_switch, dst_switch)
+      return
+    else:
+      rand = randint(0, len(paths) - 1)
     path = paths[rand]
-    log.debug("Choosen path: %s", path)    
 
-    # Path length always >= 2
-    prev = src_switch # First hop 
-    for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
+    log.debug("Choosen path %s", path)
+    reverse_path = path[::-1]
+
+    # Install flow rules in the switches for both directions of the connection
+    log.debug("Installing rule for the reverse path %s", reverse_path)
+    self.install_flow_path(reverse_path, dst_ip, src_ip)
+
+    log.debug("Installing rule for path %s", path)    
+    self.install_flow_path(path, src_ip, dst_ip)
+    
+    # Message back to switch so it can forward the packet
+    msg = of.ofp_packet_out()
+    msg.data = packet
+    # Send message to switch
+    self.connection.send(msg)
+
+    """    
+    msg = of.ofp_packet_out()
+    msg.data = packet
+    # Send message to switch
+    # self.connection.send(msg)
+
+    dpid = self.connection.dpid
+    if dpid == 5:
+      log.debug("dpid = 5")
       msg = of.ofp_flow_mod()
-      msg.idle_timeout = IDLE_TIMEOUT
-      msg.hard_timeout = HARD_TIMEOUT
+      msg.idle_timeout = 10
+      msg.hard_timeout = 10
+      msg.match.nw_src = IPAddr("10.0.0.1")
+      msg.match.nw_dst = IPAddr("10.0.0.3")
       msg.match.dl_type = IP_TYPE
-      msg.match.nw_src = IPAddr(src_ip)
-      msg.match.nw_dst = IPAddr(dst_ip)
-      msg.actions.append(of.ofp_action_output(port = self.switches_ports[prev][switch]))
-      core.openflow.getConnection(prev).send(msg)
+      msg.actions.append(of.ofp_action_output(port = 3))
+      core.openflow.getConnection(5).send(msg)
       msg.match.dl_type = ARP_TYPE
-      msg.data = event.ofp
-      core.openflow.getConnection(prev).send(msg)
-      log.debug("At switch %s rule for %s -> %s installed", prev, src_ip, dst_ip)
-      log.debug("At %s output port %s to %s", prev, self.switches_ports[prev][switch], switch)
-      prev = switch
-    
-    #core.openflow.getConnection(6).send(msg)
-    
+      core.openflow.getConnection(5).send(msg)
+
+      msg.match.nw_src = IPAddr("10.0.0.3")
+      msg.match.nw_dst = IPAddr("10.0.0.1")
+      msg.match.dl_type = IP_TYPE
+      msg.actions.append(of.ofp_action_output(port = 2))
+      core.openflow.getConnection(6).send(msg)
+      msg.match.dl_type = ARP_TYPE
+      core.openflow.getConnection(6).send(msg)
+    """
 
 def launch ():
   """
@@ -164,7 +235,7 @@ def launch ():
     log.debug("Controlling switch %s" % (event.connection,))
     RandomPaths(event.connection)
   core.openflow.addListenerByName("ConnectionUp", start_switch)
-
+  
 
 
 
@@ -358,4 +429,27 @@ msg.actions.append(of.ofp_action_output(port = 2)) # Output port!
     dpid = event.connection.dpid
     inport = event.port
 
+"""
+
+
+"""
+  # Path length always >= 2
+  prev = src_switch # First hop 
+  for switch in path[1:(len(path))]: # Dont need to install rule to the last switch in the path
+    msg = of.ofp_flow_mod()
+    msg.idle_timeout = IDLE_TIMEOUT
+    msg.hard_timeout = HARD_TIMEOUT
+    msg.match.dl_type = IP_TYPE
+    msg.match.nw_src = IPAddr(src_ip)
+    msg.match.nw_dst = IPAddr(dst_ip)
+    #msg.data = event.ofp
+    msg.actions.append(of.ofp_action_output(port = self.switches_ports[prev][switch]))
+    core.openflow.getConnection(prev).send(msg)
+    msg.match.dl_type = ARP_TYPE
+    core.openflow.getConnection(prev).send(msg)
+    log.debug("At switch %s rule for %s -> %s installed", prev, src_ip, dst_ip)
+    log.debug("At switch %s output port %s to switch %s", prev, self.switches_ports[prev][switch], switch)
+    prev = switch
+
+    # TODO: Install rule for the same path in the forward direction!!!    
 """
