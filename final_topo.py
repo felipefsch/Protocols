@@ -9,11 +9,16 @@ class MyTopo( Topo ):
     # Data structure that must be inserted into the controller to represent this topology
 
     # Adjacency list of switches
-    self.switches = {9: set([10,11]),
-                     10: set([9,13]),
-                     11: set([9,12,13]),
-                     12: set([11]),
-                     13: set([10,11])}
+    self.switches = {1: set([2,3,6,7,8]),
+                     2: set([1,4,5,7]),
+                     3: set([1,4,5,8]),
+                     4: set([2,3,6,9]),
+                     5: set([2,3,6,10]),
+                     6: set([1,4,5,9,10]),
+                     7: set([1,2]),
+                     8: set([1,3]),
+                     9: set([4,6]),
+                     10: set([5,6])}
 
     # List of ports connecting other switches for each switch
     self.switches_ports = {9: {10: 4, 11: 5},
