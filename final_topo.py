@@ -46,11 +46,16 @@ class MyTopo( Topo ):
                                    '10.0.0.22': [10,3]})
 
     # Switch DPID [ip1..ipn]
-    self.switch_ips = dict({9:['10.0.0.1','10.0.0.2', '10.0.0.3'],
-                            10:['10.0.0.4'],
-                            11:['10.0.0.5'],
-                            12:['10.0.0.6'],
-                            13:['10.0.0.7','10.0.0.8']})
+    self.switch_ips = dict({1:['10.0.0.11'],
+                            2:['10.0.0.12'],
+                            3:['10.0.0.13'],
+                            4:['10.0.0.14'],
+                            5:['10.0.0.15'],
+                            6:['10.0.0.16'],
+                            7:['10.0.0.17'],
+                            8:['10.0.0.18'],
+                            9:['10.0.0.19'],
+                            10:['10.0.0.20','10.0.0.21','10.0.0.22']})
     """
 
     def __init__( self ):
@@ -60,18 +65,18 @@ class MyTopo( Topo ):
         Topo.__init__( self )
 
         # Add hosts and switches
-        h1 = self.addHost( 'h1' )
-        h2 = self.addHost( 'h2' )
-        h3 = self.addHost( 'h3' )
-        h4 = self.addHost( 'h4' )
-        h5 = self.addHost( 'h5' )
-        h6 = self.addHost( 'h6' )
-        h7 = self.addHost( 'h7' )
-        h8 = self.addHost( 'h8' )
-        h9 = self.addHost( 'h9' )
-        h10 = self.addHost( 'h10' )
-        h11 = self.addHost( 'h11' )
-        h12 = self.addHost( 'h12' )
+        h1 = self.addHost( 'h11' )
+        h2 = self.addHost( 'h12' )
+        h3 = self.addHost( 'h13' )
+        h4 = self.addHost( 'h14' )
+        h5 = self.addHost( 'h15' )
+        h6 = self.addHost( 'h16' )
+        h7 = self.addHost( 'h17' )
+        h8 = self.addHost( 'h18' )
+        h9 = self.addHost( 'h19' )
+        h10 = self.addHost( 'h20' )
+        h11 = self.addHost( 'h21' )
+        h12 = self.addHost( 'h22' )
         s9 = self.addSwitch( 's1' )
         s10 = self.addSwitch( 's2' )
         s11 = self.addSwitch( 's3' )
